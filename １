@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset='UTF-8'>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sensor Recorder</title>
+</head>
+<body>
+<script>
+  // --------------------------------------------------
+  // 1. 変数と要素の準備
+  // --------------------------------------------------
+  let ax = 0, ay = 0, az = 0;
+  let rAlpha = 0, rBeta = 0, rGamma = 0;
+  let isRecording = false;
+  let mediaRecorder;
+  let recordedChunks = [];
+
+  // キャンバスの作成（ここに数値を描画し、これを録画します）
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 400;
+  canvas.style.border = '1px solid black';
+  canvas.style.display = 'block';
+  canvas.style.margin = '10px auto';
+  canvas.style.backgroundColor = '#f0f0f0';
+  const ctx = canvas.getContext('2d');
+
+  // 操作ボタンエリア
+  const divControls = document.createElement('div');
+  divControls.style.textAlign = 'center';
+  divControls.style.marginBottom = '10px';
+
+  // センサー開始ボタン
+  const btnSensor = document.createElement('button');
+  btnSensor.textContent = "1. センサー許可＆描画開始";
+  btnSensor.style.padding = "10px";
+  btnSensor.style.margin = "5px";
+
+  // 録画開始ボタン
+  const btnRecStart = document.createElement('button');
+  btnRecStart.textContent = "2. 録画開始";
+  btnRecStart.disabled = true; // 最初は押せない
+  btnRecStart.style.padding = "10px";
+  btnRecStart.style.margin = "5px";
+
+  // 録画停止ボタン
+  const btnRecStop = document.createElement('button');
+  btnRecStop.textContent = "3. 録画停止";
+  btnRecStop.disabled = true;
+  btnRecStop.style.padding = "10px";
+  btnRecStop.style.margin = "5px";
+
+  // 結果表示用のビデオタグ
+  const videoResult = document.createElement('video');
+  videoResult.style.display = 'block';
+  videoResult.style.margin = '10px auto';
+  videoResult.style.width = '360px';
+  videoResult.controls = true;
+
+  // ダウンロードリンク用
+  const dlLink = document.createElement('a');
+  dlLink.style.display = 'block';
+  dlLink.style.textAlign = 'center';
+  dlLink.textContent = "";
+
+  // 要素をbodyに追加
+  divControls.append(btnSensor);
+  divControls.append(document.createElement('br')); // 改行
+  divControls.append(btnRecStart);
+  divControls.append(btnRecStop);
+  document.body.append(divControls);
+  document.body.append(canvas);
+  document.body.append(dlLink);
+  document.body.append(videoResult);
+
+  // --------------------------------------------------
+  // 2. センサー処理と描画ループ
+  // --------------------------------------------------
+  
+  // センサーの値を受け取るイベントリスナー
+  function handleMotion(e) {
+    // 加速度
+    if(e.accelerationIncludingGravity){
+        ax = e.accelerationIncludingGravity.x || 0;
+        ay = e.accelerationIncludingGravity.y || 0;
+        az = e.accelerationIncludingGravity.z || 0;
+    }
+    // 角速度
+    if(e.rotationRate){
+        rAlpha = e.rotationRate.alpha || 0;
+        rBeta = e.rotationRate.beta || 0;
+        rGamma = e.rotationRate.gamma || 0;
+    }
+  }
+
+  // キャンバスへの常時描画処理
+  function drawLoop() {
+    // 背景クリア
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // テキスト描画設定
+    ctx.fillStyle = '#000000';
+    ctx.font = '20px sans-serif';
+
+    // データの表示
+    let y = 40;
+    let lh = 30; // 行の高さ
+
+    ctx.fillText("【慣性センサー値】", 20, y); y+=lh;
+    y+=10;
+    ctx.fillText("加速度 X: " + ax.toFixed(2), 20, y); y+=lh;
+    ctx.fillText("加速度 Y: " + ay.toFixed(2), 20, y); y+=lh;
+    ctx.fillText("加速度 Z: " + az.toFixed(2), 20, y); y+=lh;
+    y+=10;
+    ctx.fillText("角速度 α: " + rAlpha.toFixed(2), 20, y); y+=lh;
+    ctx.fillText("角速度 β: " + rBeta.toFixed(2), 20, y); y+=lh;
+    ctx.fillText("角速度 γ: " + rGamma.toFixed(2), 20, y); y+=lh;
+
+    // 録画中のインジケーター
+    if(isRecording){
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(320, 30, 10, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = 'red';
+        ctx.font = '14px sans-serif';
+        ctx.fillText("REC", 305, 55);
+    }
+
+    requestAnimationFrame(drawLoop);
+  }
+
+  // --------------------------------------------------
+  // 3. イベントハンドラの実装
+  // --------------------------------------------------
+
+  // ボタン1: センサー許可と開始
+  btnSensor.onclick = function(){
+    // iOS 13+ のための権限リクエスト
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission()
+        .then(permissionState => {
+          if (permissionState === 'granted') {
+            window.addEventListener('devicemotion', handleMotion);
+            startDrawing();
+          } else {
+            alert("許可されませんでした");
+          }
+        })
+        .catch(console.error);
+    } else {
+      // Android等は直接追加
+      window.addEventListener('devicemotion', handleMotion);
+      startDrawing();
+    }
+  };
+
+  function startDrawing(){
+    drawLoop(); // 描画ループ開始
+    btnSensor.disabled = true;
+    btnRecStart.disabled = false;
+    btnSensor.textContent = "センサー動作中";
+  }
+
+  // ボタン2: 録画開始
+  btnRecStart.onclick = function(){
+    // キャンバスのストリームを取得 (30fps)
+    const stream = canvas.captureStream(30);
+    
+    // MediaRecorderの設定
+    const options = { mimeType: 'video/webm' };
+    
+    // ブラウザがvideo/webmに対応しているか確認
+    if (!MediaRecorder.isTypeSupported('video/webm')) {
+        // 対応していない場合はデフォルト設定（mimeType指定なし）で試行
+        // ※iPhoneなどはここを通る可能性がありますが、webmにならない場合があります
+        console.log("video/webm not supported, using default");
+        try {
+            mediaRecorder = new MediaRecorder(stream);
+        } catch (e) {
+            alert("録画の初期化に失敗しました: " + e);
+            return;
+        }
+    } else {
+        mediaRecorder = new MediaRecorder(stream, options);
+    }
+
+    recordedChunks = [];
+    
+    mediaRecorder.ondataavailable = function(e) {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = function() {
+      // 録画終了後、Blobを作成
+      // タイプを指定（webm非対応環境でも無理やりwebmとして保存を試みる）
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      
+      const url = URL.createObjectURL(blob);
+      videoResult.src = url;
+      
+      // ダウンロードリンク作成
+      dlLink.href = url;
+      dlLink.download = 'sensor_record.webm';
+      dlLink.textContent = "動画をダウンロード (.webm)";
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    
+    btnRecStart.disabled = true;
+    btnRecStop.disabled = false;
+  };
+
+  // ボタン3: 録画停止
+  btnRecStop.onclick = function(){
+    mediaRecorder.stop();
+    isRecording = false;
+    
+    btnRecStop.disabled = true;
+    btnRecStart.disabled = false; // 再録画可能にするなら
+    btnRecStart.textContent = "再録画";
+  };
+
+</script>
+</body>
+</html>
